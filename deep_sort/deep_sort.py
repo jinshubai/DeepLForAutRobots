@@ -57,6 +57,7 @@ class DeepSort(object):
         self.height, self.width = ori_img.shape[:2]
         # generate detections
         features = self._get_features(bbox_xywh, ori_img)
+        
         bbox_tlwh = self._xywh_to_tlwh(bbox_xywh)
         detections = [Detection(bbox_tlwh[i], conf, features[i]) for i, conf in enumerate(
             confidences)]
@@ -64,7 +65,7 @@ class DeepSort(object):
         # run on non-maximum supression
         boxes = np.array([d.tlwh for d in detections])
         scores = np.array([d.confidence for d in detections])
-
+        
         # update tracker
         self.tracker.predict()
         self.tracker.update(detections, classes, confidences)
@@ -81,6 +82,7 @@ class DeepSort(object):
             track_id = track.track_id
             class_id = track.class_id
             conf = track.conf
+            
             outputs.append(np.array([x1, y1, x2, y2, track_id, class_id, conf]))
         if len(outputs) > 0:
             outputs = np.stack(outputs, axis=0)
