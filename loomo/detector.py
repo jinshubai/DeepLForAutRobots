@@ -17,7 +17,7 @@ import PIL
 import requests
 
 
-#!git clone https://github.com/ultralytics/yolov5
+#git clone https://github.com/ultralytics/yolov5
 #!pip install -r C:/Users/tobia/Documents/EPFL/DeepLForAuto/project/yolov5/requirements.txt
 
 #device = torch.device('cpu')
@@ -30,32 +30,28 @@ print(openpifpaf.__version__)
 print(torch.__version__)
 
 import os
+#os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 import sys
 # insert at 1, 0 is the script path (or '' in REPL)
-sys.path.append('C:\\Users\\tobia\\Documents\\EPFL\\DeepLForAuto\\project\\Yolov5_DeepSort_OSNet')
-sys.path.append('C:\\Users\\tobia\\Documents\\EPFL\\DeepLForAuto\\project\\Yolov5_DeepSort_OSNet\\yolov5')
-sys.path.append('C:\\Users\\tobia\\Documents\\EPFL\\DeepLForAuto\\project\\Yolov5_DeepSort_OSNet\\deep_sort')
+sys.path.append('/home/group12/DeepLForAutRobots')
+sys.path.append("/home/group12/DeepLForAutRobots/yolov5/")
+sys.path.append("/home/group12/DeepLForAutRobots/deep_sort/")
+sys.path.append("/home/group12/DeepLForAutRobots/yolov5/utils")
 
+print(sys.path)
 from deep_sort.utils.parser import get_config
 from deep_sort.deep_sort import DeepSort
 from yolov5.utils.plots import Annotator,colors, save_one_box
 from yolov5.utils.general import (LOGGER, check_img_size, non_max_suppression, scale_coords,
                                   check_imshow, xyxy2xywh, increment_path, strip_optimizer, colorstr)
-        
+     
 class Detector():
     """docstring for Detector"""
     def __init__(self):
-        super(Detector, self).__init__()
+        
 
 
-        self.img_size = 100 
-        self.img_size_w = 80
-        self.img_size_h = 60
-        self.min_object_size = 10
-        self.max_object_size = 40 
-        self.num_objects = 1
-        self.num_channels = 3
         self.net_cpu, _ = openpifpaf.network.factory(checkpoint='shufflenetv2k16w')
         self.net = self.net_cpu.to(device)
 
@@ -67,7 +63,7 @@ class Detector():
         self.model.classes=[0]
 
         cfg = get_config()
-        cfg.merge_from_file("deep_sort/configs/deep_sort.yaml")
+        cfg.merge_from_file("/home/group12/DeepLForAutRobots/deep_sort/configs/deep_sort.yaml")
         deep_sort_model = 'osnet_x1_0_MSMT17'
 
         self.deepsort = DeepSort(
@@ -102,6 +98,7 @@ class Detector():
         self.model.eval()
 
     def forward(self, img): 
+        img=np.array(img)
         frame=img  
         trackingBox=[]
         trackingLabel=[]
@@ -173,8 +170,9 @@ class Detector():
                         self.begin = False
                     elif not self.begin and id == self.IdToTrack: #identify the id of interest
                         c = 0
-                        trackingBox=[output[0:4]]
-                        trackingLabel=[output[4]]
+
+                        trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                        trackingLabel=output[4]
                     else: 
                         c = 1 #blue I think
                     text = f'{id:0.0f} person {conf:.2f}'
@@ -232,8 +230,12 @@ class Detector():
         #    imToShow[bbox_array!=0]=bbox_array[bbox_array!=0]
         #cv2.imshow("image",frame)
 
-
-        return trackingBox,trackingLabel,frame
+        
+        if(len(trackingBox)==0):
+           return[float("NAN"),float("NAN")],[float("NAN")]
+        else:
+          print([trackingBox[0][0],trackingBox[0][1]],[float(trackingLabel)])
+          return [trackingBox[0][0],trackingBox[0][1]],[float(trackingLabel)]
 
 
 
@@ -379,3 +381,10 @@ def IsPersonOfInterest(bbox,locationOfPersonToTrack):
     if x1<xt and xt < x2 and y1 < yt and yt < y2:
         return True
     return False
+    
+    
+    
+if __name__ == "__main__":
+    image=cv2.imread("/home/group12/DeepLForAutRobots/testImage.jpg")
+    detect=Detector()
+    print(detect.forward(image))

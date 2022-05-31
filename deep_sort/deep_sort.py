@@ -24,7 +24,7 @@ class DeepSort(object):
         # models trained on: market1501, dukemtmcreid and msmt17
         if is_model_in_factory(model):
             # download the model
-            model_path = join('deep_sort/deep/checkpoint', model + '.pth')
+            model_path = join('/home/group12/DeepLForAutRobots/deep_sort/deep/checkpoint/', model + '.pth')
             if not file_exists(model_path):
                 gdown.download(get_model_link(model), model_path, quiet=False)
 
