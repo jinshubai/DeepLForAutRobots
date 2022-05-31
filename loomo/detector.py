@@ -30,7 +30,7 @@ print(openpifpaf.__version__)
 print(torch.__version__)
 
 import os
-#os.environ['KMP_DUPLICATE_LIB_OK']='True'
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 import sys
 # insert at 1, 0 is the script path (or '' in REPL)
@@ -62,7 +62,7 @@ class Detector():
         self.model = torch.hub.load('ultralytics/yolov5', 'yolov5m')
         self.model.classes=[0]
 
-        self.capDetector = torch.hub.load('ultralytics/yolov5','custom',path=r'C:\Users\tobia\Documents\EPFL\DeepLForAuto\project\DeepLForAutRobots\best (17) (1).pt') #load custom detector
+        self.capDetector = torch.hub.load('ultralytics/yolov5','custom',path=r'/home/group12/DeepLForAutRobots/best (17) (1).pt') #load custom detector
         self.capDetector.classes=[0]
 
         cfg = get_config()
@@ -75,7 +75,7 @@ class Detector():
             max_dist=cfg.DEEPSORT.MAX_DIST,
             max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
             max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET)
-
+        print("Finished init2")
         self.verbose = False
 
         self.doDetectSceleton=True
@@ -94,7 +94,7 @@ class Detector():
         self.lostIdCount = 0
         self.MaxIdCount = 50
         self.begin = True
-
+        print("Finished init")
 
     def load(self, PATH):
         # self.model = torch.load(PATH)
@@ -114,7 +114,7 @@ class Detector():
         #print(results)
         labels, cord = results.xyxyn[0][:, -1].cpu().numpy(), results.xyxyn[0][:, :-1].cpu().numpy()
         #print(labels,cord)
-        
+        print("Forward")
         xloc,yloc=None,None
         #if we want to do first persone detection -> use openpifpaf until it discovers the person of interest
         timebp = time.time()
@@ -199,15 +199,15 @@ class Detector():
                         cls = output[5]
                         conf = output[6]
                         #just forinitialisation (first loop): link OpenPifPaf to ID to track
-                        if begin and IsPersonOfInterest(bboxes,locationOfPersonToTrack): #just initialize tracker without taking care of the cap first
+                        if self.begin and IsPersonOfInterest(bboxes,locationOfPersonToTrack): #just initialize tracker without taking care of the cap first
                             IdToTrack = id
                             c = 0 #mark red
-                            begin = False
+                            self.begin = False
                             
-                        elif not begin and id == IdToTrack and not self.isCap: #identify the id of interest when cap is not detected
+                        elif not self.begin and id == self.IdToTrack and not self.isCap: #identify the id of interest when cap is not detected
                             c = 0 #red
                             if self.verbose: print("no cap")
-                        elif not begin and id == IdToTrack and self.isCap: #if the cap has been detected, check if the tracked person has the cap
+                        elif not self.begin and id == self.IdToTrack and self.isCap: #if the cap has been detected, check if the tracked person has the cap
                             if IsPersonOfInterest(bboxes,self.capLocation): #check if center of bbox of cap is in the bb of person tracked
                                 c = 0
                                 if self.verbose: print("cap confirmed")
@@ -245,17 +245,17 @@ class Detector():
                         #    begin = False
             
             #Id still here ?
-            if IdToTrack not in IDs:
-                lostIdCount += 1
+            if self.IdToTrack not in IDs:
+                self.lostIdCount += 1
             else: 
-                lostIdCount = 0 #id is here, re initialize counter
+                self.lostIdCount = 0 #id is here, re initialize counter
                 trackingBox=xyxy2xywh(np.expand_dims(outputs[np.where(IDs==IdToTrack),0:4],axis=0))
                 trackingLabel=output[4]
             
             #wait clk*MaxIdCount time before saying we lost the Id: TO OPTIMIZE
-            if lostIdCount > self.MaxIdCount:
+            if self.lostIdCount > self.MaxIdCount:
                 print('WARNING: Lost person of Interest ! Do gesture of interest again')
-                doDetectSceleton = True
+                self.doDetectSceleton = True
                 #doTracking = False #it is finally done in the beginning of the skeleton loop -> avoid entering in the YOLo below statement
             if self.verbose: print('tracking time :', time.time()-timeY)
             
@@ -280,14 +280,14 @@ class Detector():
                     if(hasDetected and isSamePerson) or isSamePersonFromCap:
                     #locationOfPersonToTrack=((x1+x2)/2.0,(y1+y2)/2.0)
                         if hasDetected:
-                            locationOfPersonToTrack=(xloc,yloc) #need to change this
+                            self.locationOfPersonToTrack=(xloc,yloc) #need to change this
                         elif isSamePersonFromCap:
-                            locationOfPersonToTrack = self.capLocation
-                        print("Detected at(x,y):(",locationOfPersonToTrack[0],locationOfPersonToTrack[1],")")
+                            self.locationOfPersonToTrack = self.capLocation
+                        print("Detected at(x,y):(",self.locationOfPersonToTrack[0],self.locationOfPersonToTrack[1],")")
                         colorToUse=(255,0,0)
-                        doDetectSceleton = False
+                        self.doDetectSceleton = False
                         self.doTracking = True
-                        begin = True
+                        self.begin = True
                         
                     cv2.rectangle(frame, (x1, y1), (x2, y2), colorToUse, 2)
                     cv2.putText(frame, results.names[int(labels[i])], (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorToUse, 2)
