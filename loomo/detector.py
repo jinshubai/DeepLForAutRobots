@@ -62,6 +62,9 @@ class Detector():
         self.model = torch.hub.load('ultralytics/yolov5', 'yolov5m')
         self.model.classes=[0]
 
+        self.capDetector = torch.hub.load('ultralytics/yolov5','custom',path=r'C:\Users\tobia\Documents\EPFL\DeepLForAuto\project\DeepLForAutRobots\best (17) (1).pt') #load custom detector
+        self.capDetector.classes=[0]
+
         cfg = get_config()
         cfg.merge_from_file("/home/group12/DeepLForAutRobots/deep_sort/configs/deep_sort.yaml")
         deep_sort_model = 'osnet_x1_0_MSMT17'
@@ -77,7 +80,10 @@ class Detector():
 
         self.doDetectSceleton=True
         self.doTracking = False
-
+        self.isCap = False
+        self.capLocation = [None,None]
+        #self.findCapAgain = False
+        self.doCapDetection=True
 
         # initialze bounding box to empty
         self.bbox = ''
@@ -131,71 +137,131 @@ class Detector():
             timeE = time.time()
             if self.verbose: print("infTime:",timeE-timebp)
         #cv2_imshow(labeled_img)
+        self.isCap = False
+        x_shape, y_shape = frame.shape[1], frame.shape[0]
+        if self.doCapDetection:
+            Capresults = self.capDetector(frame,augment=False)
+            Caplabels, Capcord = Capresults.xyxyn[0][:, -1].cpu().numpy(), Capresults.xyxyn[0][:, :-1].cpu().numpy()
+            nCap = len(Caplabels)
+            #print(Capcord)
+            if nCap > 1: print("WARNING: several cap detected")
+            elif nCap == 0 and self.verbose: print("No cap detected")
+            elif nCap == 1: 
+                self.isCap = True
+                cap = Capcord[0]
+                x1, y1, x2, y2 = int(cap[0]*x_shape), int(cap[1]*y_shape), int(cap[2]*x_shape), int(cap[3]*y_shape)
+                self.capLocation = [(x1+x2)/2,(y1+y2)/2]
+            #plot anyway the results
             
+            for i in range(nCap):
+                cap = Capcord[i]
+                if cap[4] >= 0.2:     #if confidence is above 0.2
+                    x1, y1, x2, y2 = int(cap[0]*x_shape), int(cap[1]*y_shape), int(cap[2]*x_shape), int(cap[3]*y_shape)
+                    colorToUse = (255, 0, 0)
+                    conf = cap[4]
+                    box = (x1,y1,x2,y2)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), colorToUse, 2)
+                    cv2.putText(frame, Capresults.names[int(Caplabels[i])], (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorToUse, 2)
+                    cv2.putText(frame, str(conf), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorToUse, 2) 
+                    #print(path_to_img+'cap.jpg')
+                    #cv2.imwrite(path_to_img+'\cap.jpg', frame)
             
-        if self.doTracking and cord is not None and len(cord): #avoid empty detections
-            annotator = Annotator(frame, line_width=2, pil=not ascii)
-            labels = torch.Tensor(labels)
-            cord = np.array(cord)
-            x_shape, y_shape = frame.shape[1], frame.shape[0]
-            #xywhs = torch.Tensor(cord[:,:4]) #see below for one guy: int(row[0]*x_shape), int(row[1]*y_shape), int(row[2]*x_shape), int(row[3]*y_shape), row[4]*
-            xyxys = []
-            for i in range(len(labels)):
-                xyxys.append([cord[i,0]*x_shape,cord[i,1]*y_shape,cord[i,2]*x_shape,cord[i,3]*y_shape])
-            xyxys = np.atleast_2d(xyxys)
-            #print('yolo xy',xyxys)
-            #Transform fomr xyxy (top left, bottom right) to xywh where xy is the center and wh is the width and height (full width and height)
-            xywhs = torch.Tensor(xyxy2xywh(xyxys)) 
-            #print('yolo ws :',xywhs)
-            confs = torch.Tensor(cord[:,4])
-            #print(frame.shape)
-            #print(np.reshape(frame,[3,480,640]))
-            #print(xywhs,confs,labels,)
-            outputs = self.deepsort.update(xywhs.cpu(), confs.cpu(), labels.cpu(), frame)
-            # draw boxes for visualization
-            #print('DeepSort',(outputs))
-            IDs = []
-            if len(outputs) > 0:
-                for output in outputs:
-                    self.bboxes = output[0:4] #given in xyxy
-                    #print('Tracker BB',bboxes)
-                    id = output[4]
-                    IDs.append(id)
-                    cls = output[5]
-                    conf = output[6]
-                    #just forinitialisation (first loop): link OpenPifPaf to ID to track
-                    if self.begin and IsPersonOfInterest(self.bboxes,self.locationOfPersonToTrack): 
-                        self.IdToTrack = id
-                        c = 0 #mark red
-                        self.begin = False
-                    elif not self.begin and id == self.IdToTrack: #identify the id of interest
-                        c = 0
 
-                        trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
-                        trackingLabel=output[4]
-                    else: 
-                        c = 1 #blue I think
-                    text = f'{id:0.0f} person {conf:.2f}'
-                    #print(bboxes,id,conf)
-                    #display_xywh(frame,bboxes,text)
-                    annotator.box_label(self.bboxes, text, color=colors(c, True))
+
+
+            if self.doTracking and cord is not None and len(cord): #avoid empty detections
+                annotator = Annotator(frame, line_width=2, pil=not ascii)
+                labels = torch.Tensor(labels)
+                cord = np.array(cord)
+                x_shape, y_shape = frame.shape[1], frame.shape[0]
+                #xywhs = torch.Tensor(cord[:,:4]) #see below for one guy: int(row[0]*x_shape), int(row[1]*y_shape), int(row[2]*x_shape), int(row[3]*y_shape), row[4]*
+                xyxys = []
+                for i in range(len(labels)):
+                    xyxys.append([cord[i,0]*x_shape,cord[i,1]*y_shape,cord[i,2]*x_shape,cord[i,3]*y_shape])
+                xyxys = np.atleast_2d(xyxys)
+                #print('yolo xy',xyxys)
+                #Transform fomr xyxy (top left, bottom right) to xywh where xy is the center and wh is the width and height (full width and height)
+                xywhs = torch.Tensor(xyxy2xywh(xyxys)) 
+                #print('yolo ws :',xywhs)
+                confs = torch.Tensor(cord[:,4])
+                #print(frame.shape)
+                #print(np.reshape(frame,[3,480,640]))
+                outputs = deepsort.update(xywhs.cpu(), confs.cpu(), labels.cpu(), frame)
+                # draw boxes for visualization
+                #print('DeepSort',len(outputs))
+                IDs = []
+                if len(outputs) > 0:
+                    for output in outputs:
+                        bboxes = output[0:4] #given in xyxy
+                        #print('Tracker BB',bboxes)
+                        id = output[4]
+                        IDs.append(id)
+                        cls = output[5]
+                        conf = output[6]
+                        #just forinitialisation (first loop): link OpenPifPaf to ID to track
+                        if begin and IsPersonOfInterest(bboxes,locationOfPersonToTrack): #just initialize tracker without taking care of the cap first
+                            IdToTrack = id
+                            c = 0 #mark red
+                            begin = False
+                            
+                        elif not begin and id == IdToTrack and not self.isCap: #identify the id of interest when cap is not detected
+                            c = 0 #red
+                            if self.verbose: print("no cap")
+                        elif not begin and id == IdToTrack and self.isCap: #if the cap has been detected, check if the tracked person has the cap
+                            if IsPersonOfInterest(bboxes,self.capLocation): #check if center of bbox of cap is in the bb of person tracked
+                                c = 0
+                                if self.verbose: print("cap confirmed")
+                            else: #that should mean the person of interest has changed to another person
+                                #try to find back the person of interest if still here
+                                print("cap not confirmed")
+                                for pp in outputs:
+                                    bboxesPP = pp[0:4]
+                                    IdPP = pp[4]
+                                    if IsPersonOfInterest(bboxesPP,self.capLocation): 
+                                        #it means the cap is in another box ! just take it as the new id to track
+                                        print("missmatch")
+                                        IdToTrack = IdPP
+                                        c = 7 
+                                        break
+                                c = 2 #orange
+                        elif not begin and id != IdToTrack and self.isCap: #if cap is in another box
+                            #check if cap is in another id
+                            if IsPersonOfInterest(bboxes,self.capLocation): 
+                                IdToTrack = id
+                                c = 5 #green
+                                print("cap re ids")
+                            c = 1
+                        else: 
+                            c = 1 #pink 
+                            #print('pink')
+                        text = f'{id:0.0f} person {conf:.2f}'
+                        #print(bboxes,id,conf)
+                        #display_xywh(frame,bboxes,text)
+                        annotator.box_label(bboxes, text, color=colors(c, True))
+                        #cv2.imwrite(r"C:\\Users\\Nate\\Desktop\\Cours_EPFL\\Robotique\\MA2\\DL\\Project\\img\\tracker\\track"+str(yo)+".jpg", frame)
+                        
+                        #if begin: 
+                        #    cv2.imwrite(path_to_img+'\capTracked.jpg', frame)
+                        #    begin = False
             
             #Id still here ?
-            if self.IdToTrack not in IDs:
-                self.lostIdCount += 1
-            else: self.lostIdCount = 0 #id is here re initialize counter
+            if IdToTrack not in IDs:
+                lostIdCount += 1
+            else: 
+                lostIdCount = 0 #id is here, re initialize counter
+                trackingBox=xyxy2xywh(np.expand_dims(outputs[np.where(IDs==IdToTrack),0:4],axis=0))
+                trackingLabel=output[4]
             
             #wait clk*MaxIdCount time before saying we lost the Id: TO OPTIMIZE
-            if self.lostIdCount > self.MaxIdCount:
+            if lostIdCount > self.MaxIdCount:
                 print('WARNING: Lost person of Interest ! Do gesture of interest again')
-                self.doDetectSceleton = True
+                doDetectSceleton = True
                 #doTracking = False #it is finally done in the beginning of the skeleton loop -> avoid entering in the YOLo below statement
             if self.verbose: print('tracking time :', time.time()-timeY)
             
             
         #loop through YOLO detections and draw them on transparent overlay image
         if not self.doTracking:
-            print("")
             n = len(labels)
             x_shape, y_shape = frame.shape[1], frame.shape[0]
             #print(x_shape)
@@ -205,31 +271,35 @@ class Detector():
                     x1, y1, x2, y2 = int(row[0]*x_shape), int(row[1]*y_shape), int(row[2]*x_shape), int(row[3]*y_shape)
                     bgr = (0, 255, 0)
                     colorToUse=bgr
-
                     isSamePerson = False
+                    isSamePersonFromCap = False
                     #avoid having personDetected empty
                     box = (x1,y1,x2,y2)
-                    if hasDetected and self.doDetectSceleton: isSamePerson = isSamePersonDetector(personDetected,box) 
-                    if(hasDetected and isSamePerson):
+                    if self.isCap: isSamePersonFromCap = IsPersonOfInterest(box,self.capLocation)
+                    if hasDetected and doDetectSceleton: isSamePerson = isSamePersonDetector(personDetected,box) 
+                    if(hasDetected and isSamePerson) or isSamePersonFromCap:
                     #locationOfPersonToTrack=((x1+x2)/2.0,(y1+y2)/2.0)
-                        self.locationOfPersonToTrack=(xloc,yloc) #need to change this
-                        print("Detected at(x,y):(",self.locationOfPersonToTrack[0],self.locationOfPersonToTrack[1],")")
+                        if hasDetected:
+                            locationOfPersonToTrack=(xloc,yloc) #need to change this
+                        elif isSamePersonFromCap:
+                            locationOfPersonToTrack = self.capLocation
+                        print("Detected at(x,y):(",locationOfPersonToTrack[0],locationOfPersonToTrack[1],")")
                         colorToUse=(255,0,0)
-                        self.doDetectSceleton = False
+                        doDetectSceleton = False
                         self.doTracking = True
-                        self.begin = True
-                        self.bboxToTrack = box #not used
+                        begin = True
+                        
                     cv2.rectangle(frame, (x1, y1), (x2, y2), colorToUse, 2)
                     cv2.putText(frame, results.names[int(labels[i])], (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorToUse, 2)
-            if self.verbose: print('full time: ',time.time()-timeY)
+                    
+                    #if (hasDetected and isSamePerson) or isSamePersonFromCap:
+                    #    cv2.imwrite(path_to_img+'\capDetetcted.jpg', frame)
+                    
 
-        #plot a screen of the current moment
-        #if(xloc!=None and yloc!=None):
-        #    imToShow=np.zeros_like(bbox_array)
-        #    imToShow[:,:,0:3]=frame
-        #    imToShow[bbox_array!=0]=bbox_array[bbox_array!=0]
-        #cv2.imshow("image",frame)
 
+            
+            
+        
         
         if(len(trackingBox)==0):
            return[float("NAN"),float("NAN")],[float("NAN")]
