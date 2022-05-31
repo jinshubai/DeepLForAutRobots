@@ -186,7 +186,7 @@ class Detector():
                 confs = torch.Tensor(cord[:,4])
                 #print(frame.shape)
                 #print(np.reshape(frame,[3,480,640]))
-                outputs = deepsort.update(xywhs.cpu(), confs.cpu(), labels.cpu(), frame)
+                outputs = self.deepsort.update(xywhs.cpu(), confs.cpu(), labels.cpu(), frame)
                 # draw boxes for visualization
                 #print('DeepSort',len(outputs))
                 IDs = []
@@ -199,18 +199,23 @@ class Detector():
                         cls = output[5]
                         conf = output[6]
                         #just forinitialisation (first loop): link OpenPifPaf to ID to track
-                        if self.begin and IsPersonOfInterest(bboxes,locationOfPersonToTrack): #just initialize tracker without taking care of the cap first
-                            IdToTrack = id
+                        if self.begin and IsPersonOfInterest(bboxes,self.locationOfPersonToTrack): #just initialize tracker without taking care of the cap first
+                            self.IdToTrack = id
                             c = 0 #mark red
                             self.begin = False
-                            
+                            trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                            trackingLabel=output[4]
                         elif not self.begin and id == self.IdToTrack and not self.isCap: #identify the id of interest when cap is not detected
                             c = 0 #red
                             if self.verbose: print("no cap")
+                            trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                            trackingLabel=output[4]
                         elif not self.begin and id == self.IdToTrack and self.isCap: #if the cap has been detected, check if the tracked person has the cap
                             if IsPersonOfInterest(bboxes,self.capLocation): #check if center of bbox of cap is in the bb of person tracked
                                 c = 0
                                 if self.verbose: print("cap confirmed")
+                                trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                                trackingLabel=output[4]
                             else: #that should mean the person of interest has changed to another person
                                 #try to find back the person of interest if still here
                                 print("cap not confirmed")
@@ -220,17 +225,21 @@ class Detector():
                                     if IsPersonOfInterest(bboxesPP,self.capLocation): 
                                         #it means the cap is in another box ! just take it as the new id to track
                                         print("missmatch")
-                                        IdToTrack = IdPP
+                                        self.IdToTrack = IdPP
                                         c = 7 
                                         break
                                 c = 2 #orange
-                        elif not begin and id != IdToTrack and self.isCap: #if cap is in another box
+                                trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                                trackingLabel=output[4]
+                        elif not self.begin and id != self.IdToTrack and self.isCap: #if cap is in another box
                             #check if cap is in another id
                             if IsPersonOfInterest(bboxes,self.capLocation): 
-                                IdToTrack = id
+                                self.IdToTrack = id
                                 c = 5 #green
                                 print("cap re ids")
                             c = 1
+                            trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                            trackingLabel=output[4]
                         else: 
                             c = 1 #pink 
                             #print('pink')
@@ -244,20 +253,20 @@ class Detector():
                         #    cv2.imwrite(path_to_img+'\capTracked.jpg', frame)
                         #    begin = False
             
-            #Id still here ?
-            if self.IdToTrack not in IDs:
-                self.lostIdCount += 1
-            else: 
-                self.lostIdCount = 0 #id is here, re initialize counter
-                trackingBox=xyxy2xywh(np.expand_dims(outputs[np.where(IDs==IdToTrack),0:4],axis=0))
-                trackingLabel=output[4]
+              #Id still here ?
+                if self.IdToTrack not in IDs:
+                    self.lostIdCount += 1
+                else: 
+                    self.lostIdCount = 0 #id is here, re initialize counter
+                    #trackingBox=xyxy2xywh(np.expand_dims(outputs[np.where(IDs==self.IdToTrack)][0:4],axis=0))
+                    #trackingLabel=output[4]
             
-            #wait clk*MaxIdCount time before saying we lost the Id: TO OPTIMIZE
-            if self.lostIdCount > self.MaxIdCount:
-                print('WARNING: Lost person of Interest ! Do gesture of interest again')
-                self.doDetectSceleton = True
-                #doTracking = False #it is finally done in the beginning of the skeleton loop -> avoid entering in the YOLo below statement
-            if self.verbose: print('tracking time :', time.time()-timeY)
+              #wait clk*MaxIdCount time before saying we lost the Id: TO OPTIMIZE
+                if self.lostIdCount > self.MaxIdCount:
+                    print('WARNING: Lost person of Interest ! Do gesture of interest again')
+                    self.doDetectSceleton = True
+                    #doTracking = False #it is finally done in the beginning of the skeleton loop -> avoid entering in the YOLo below statement
+                if self.verbose: print('tracking time :', time.time()-timeY)
             
             
         #loop through YOLO detections and draw them on transparent overlay image
@@ -276,7 +285,7 @@ class Detector():
                     #avoid having personDetected empty
                     box = (x1,y1,x2,y2)
                     if self.isCap: isSamePersonFromCap = IsPersonOfInterest(box,self.capLocation)
-                    if hasDetected and doDetectSceleton: isSamePerson = isSamePersonDetector(personDetected,box) 
+                    if hasDetected and self.doDetectSceleton: isSamePerson = isSamePersonDetector(personDetected,box) 
                     if(hasDetected and isSamePerson) or isSamePersonFromCap:
                     #locationOfPersonToTrack=((x1+x2)/2.0,(y1+y2)/2.0)
                         if hasDetected:
