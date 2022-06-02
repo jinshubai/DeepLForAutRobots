@@ -92,9 +92,13 @@ class Detector():
         self.bboxToTrack = []
         self.IdToTrack = -1
         self.lostIdCount = 0
-        self.MaxIdCount = 50
+        self.MaxIdCount = 5
         self.begin = True
-        print("Finished init")
+                ################################################################################33NATHAN
+        self.Xtrack = float("NAN")
+        self.Ytrack = float("NAN")
+        self.LabelTrack = float("NAN")
+
 
     def load(self, PATH):
         # self.model = torch.load(PATH)
@@ -136,7 +140,7 @@ class Detector():
             frame,(xloc,yloc),hasDetected,personDetected = return_skeletons(frame,people)
             timeE = time.time()
             if self.verbose: print("infTime:",timeE-timebp)
-        #cv2_imshow(labeled_img)
+        
         self.isCap = False
         x_shape, y_shape = frame.shape[1], frame.shape[0]
         if self.doCapDetection:
@@ -155,7 +159,7 @@ class Detector():
             
             for i in range(nCap):
                 cap = Capcord[i]
-                if cap[4] >= 0.2:     #if confidence is above 0.2
+                if cap[4] >= 0.25:     #if confidence is above 0.2
                     x1, y1, x2, y2 = int(cap[0]*x_shape), int(cap[1]*y_shape), int(cap[2]*x_shape), int(cap[3]*y_shape)
                     colorToUse = (255, 0, 0)
                     conf = cap[4]
@@ -203,19 +207,25 @@ class Detector():
                             self.IdToTrack = id
                             c = 0 #mark red
                             self.begin = False
-                            trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
-                            trackingLabel=output[4]
+                            #Xtrack,Ytrack=output[0],output[1]
+                            #LabelTrack = output[4]
+                            #trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                            #trackingLabel=output[4]
                         elif not self.begin and id == self.IdToTrack and not self.isCap: #identify the id of interest when cap is not detected
                             c = 0 #red
                             if self.verbose: print("no cap")
-                            trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
-                            trackingLabel=output[4]
+                            #Xtrack,Ytrack=output[0],output[1]
+                            #LabelTrack = output[4]
+                            #trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                            #trackingLabel=output[4]
                         elif not self.begin and id == self.IdToTrack and self.isCap: #if the cap has been detected, check if the tracked person has the cap
                             if IsPersonOfInterest(bboxes,self.capLocation): #check if center of bbox of cap is in the bb of person tracked
                                 c = 0
                                 if self.verbose: print("cap confirmed")
-                                trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
-                                trackingLabel=output[4]
+                                #Xtrack,Ytrack=output[0],output[1]
+                                #LabelTrack = output[4]
+                                #trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                                #trackingLabel=output[4]
                             else: #that should mean the person of interest has changed to another person
                                 #try to find back the person of interest if still here
                                 print("cap not confirmed")
@@ -229,8 +239,8 @@ class Detector():
                                         c = 7 
                                         break
                                 c = 2 #orange
-                                trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
-                                trackingLabel=output[4]
+                                #trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                                #trackingLabel=output[4]
                         elif not self.begin and id != self.IdToTrack and self.isCap: #if cap is in another box
                             #check if cap is in another id
                             if IsPersonOfInterest(bboxes,self.capLocation): 
@@ -238,33 +248,41 @@ class Detector():
                                 c = 5 #green
                                 print("cap re ids")
                             c = 1
-                            trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
-                            trackingLabel=output[4]
+                            #trackingBox=xyxy2xywh(np.expand_dims(output[0:4],axis=0))
+                            #trackingLabel=output[4]
                         else: 
                             c = 1 #pink 
                             #print('pink')
                         text = f'{id:0.0f} person {conf:.2f}'
                         #print(bboxes,id,conf)
                         #display_xywh(frame,bboxes,text)
-                        annotator.box_label(bboxes, text, color=colors(c, True))
+                        #annotator.box_label(bboxes, text, color=colors(c, True))
                         #cv2.imwrite(r"C:\\Users\\Nate\\Desktop\\Cours_EPFL\\Robotique\\MA2\\DL\\Project\\img\\tracker\\track"+str(yo)+".jpg", frame)
                         
                         #if begin: 
                         #    cv2.imwrite(path_to_img+'\capTracked.jpg', frame)
                         #    begin = False
-            
+
               #Id still here ?
                 if self.IdToTrack not in IDs:
                     self.lostIdCount += 1
                 else: 
                     self.lostIdCount = 0 #id is here, re initialize counter
-                    #trackingBox=xyxy2xywh(np.expand_dims(outputs[np.where(IDs==self.IdToTrack)][0:4],axis=0))
-                    #trackingLabel=output[4]
+                    output = outputs[np.where(self.IdToTrack == IDs)].flatten()
+                    Xt1,Yt1,xt2,yt2=int(output[0]),int(output[1]),int(output[2]),int(output[3])
+                    if(self.isCap):
+                        #Yt1,yt2=int(Capcord[0][1]),int(Capcord[0][3])
+                        pass
+                    #xywhTrack=xyxy2xywh(np.expand_dims([Xt1,Yt1,xt2,yt2],axis=0))
+                    self.Xtrack,self.Ytrack = (xt2+Xt1)//2,(yt2+Yt1)//2
+                    self.LabelTrack = output[4]
             
               #wait clk*MaxIdCount time before saying we lost the Id: TO OPTIMIZE
                 if self.lostIdCount > self.MaxIdCount:
                     print('WARNING: Lost person of Interest ! Do gesture of interest again')
                     self.doDetectSceleton = True
+                    self.Xtrack,self.Ytrack = float("NAN"),float("NAN")
+                    self.LabelTrack = float("NAN")
                     #doTracking = False #it is finally done in the beginning of the skeleton loop -> avoid entering in the YOLo below statement
                 if self.verbose: print('tracking time :', time.time()-timeY)
             
@@ -304,17 +322,9 @@ class Detector():
                     #if (hasDetected and isSamePerson) or isSamePersonFromCap:
                     #    cv2.imwrite(path_to_img+'\capDetetcted.jpg', frame)
                     
-
-
-            
-            
         
-        
-        if(len(trackingBox)==0):
-           return[float("NAN"),float("NAN")],[float("NAN")]
-        else:
-          print([trackingBox[0][0],trackingBox[0][1]],[float(trackingLabel)])
-          return [trackingBox[0][0],trackingBox[0][1]],[float(trackingLabel)]
+        cv2.imshow("Annotated frame",frame)
+        return [self.Xtrack,self.Ytrack],[float(self.LabelTrack)]
 
 
 
